@@ -1,4 +1,4 @@
-Add sector addition
+Add sector and leverage addition
 
 button to change stable coin balance within GUI
 

@@ -1,5 +1,0 @@
-Add sector and leverage addition
-
-button to change stable coin balance within GUI
-
-Improve GUI and add graphs

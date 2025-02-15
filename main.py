@@ -3,9 +3,19 @@ import json
 import os
 import requests
 import sys
+import operator
 import tkinter
 from tkinter import messagebox, Label, messagebox
 from tkinter.ttk import Treeview, Style
+
+def getFilePath(fileName):
+    # check if the program is running as an exe
+    if getattr(sys, 'frozen', False):
+        scriptDir = os.path.dirname(sys.executable)
+    else:
+        scriptDir = os.path.dirname(os.path.abspath(__file__)) # gets the directory of this program
+    filePath = os.path.join(scriptDir, fileName) # finds path for file
+    return filePath
 
 def viewPortfolio(mainGUI):
     port = updatePortfolio()
@@ -20,6 +30,19 @@ def viewPortfolio(mainGUI):
     # defines the columns as all the keys
     columns = list(port[0].keys())
     tree = Treeview(portGUI, columns=columns, show="headings")
+
+    # Grab config values
+    configFilePath = getFilePath("config.json")
+    if not os.path.exists(configFilePath):
+        messagebox.showerror("Error", "No 'config.json' file found")
+        return -1
+    with open(configFilePath, "r+") as configFile:
+        try:
+            config = json.load(configFile)
+        except json.JSONDecodeError:
+            messagebox.showerror("Error", "Config file error")
+        highlightNum = config["portforlio_highlight_percent"]
+        highlightColor = config["portfolio_highlight_color"]
 
      # Column sorting function
     def sortTrees(tree, col, reverse):
@@ -44,7 +67,7 @@ def viewPortfolio(mainGUI):
             tree.move(k, "", i) # moves trees to correct spots
             portPer = (tree.item(k, "values")[1])
             portPerFix = portPer.replace("%", "")
-            tree.item(k, tags=("sold" if float(portPerFix) < .1 else "even" if i % 2 == 0 else "odd"))
+            tree.item(k, tags=("sold" if float(portPerFix) < (highlightNum * 100) else "even" if i % 2 == 0 else "odd"))
 
         tree.heading(col, command=lambda: sortTrees(tree, col, not reverse))
 
@@ -74,7 +97,7 @@ def viewPortfolio(mainGUI):
 
     tree.tag_configure("even", background="#f0f0f0")
     tree.tag_configure("odd", background="#ffffff")
-    tree.tag_configure("sold", background="light blue")
+    tree.tag_configure("sold", background=highlightColor)
 
     # column formatting
     for col in columns:
@@ -143,18 +166,15 @@ def viewPortfolio(mainGUI):
     tree2.pack(expand=False, fill="both")
 
 def updatePortfolio():
-    # check if the program is running as an exe
-    if getattr(sys, 'frozen', False):
-        scriptDir = os.path.dirname(sys.executable)
-    else:
-        scriptDir = os.path.dirname(os.path.abspath(__file__)) # gets the directory of this program
-    file_path = os.path.join(scriptDir, "transactions.json") # finds path for transaction file
+    # find path for transactions file
+    file_path = getFilePath("transactions.json")
 
     # checks if 'transactions.json' exists
     if not os.path.exists(file_path):
         messagebox.showerror("Error", "No 'transactions.json' file found")
         return -1
 
+    # Try to open 'transactions.json'
     with open(file_path, "r") as file: # opens the file for reading, with closes the files when done
         try:
             transactions = json.load(file) # reads the existing data on the file to a temporary dictionary
@@ -162,14 +182,15 @@ def updatePortfolio():
             messagebox.showerror("Error", "Could not read transactions.json")
             return -1
         
-        portFilePath = os.path.join(scriptDir, "portfolio.json") # finds path for transaction file
+        # try to open 'portfolio.json'
+        portFilePath = getFilePath("portfolio.json")
         with open(portFilePath, "r+") as file2: # opens the file for reading, with closes the files when done
             try:
                 oldPort = json.load(file2) # reads the existing data on the file to a temporary dictionary
             except json.JSONDecodeError: # if the file is empty
                 messagebox.showerror("Error", "No 'portfolio.json' file found")
                 return -1
-        
+
             port = []    
             i = 1 # extra index since USDC is at 0
             # start with USDC value
@@ -236,8 +257,12 @@ def updatePortfolio():
                         port[i]["totalCoinSells"] += tx["coinAmount"]
                         port[i]["totalUSDCSells"] += tx["usdcAmount"]
 
-                # Calculations
+                # quit program if any of the values turn negative
                 port[i]["netCoins"] = port[i]["totalCoinBuys"] - port[i]["totalCoinSells"]
+                if port[i]["netCoins"] < 0:
+                    messagebox.showerror("Error", f"Negative value calculated for {key}.")
+                    return -1
+                # calculations
                 port[i]["averageBuyPrice"] = port[i]["totalUSDCBuys"] / port[i]["totalCoinBuys"]
                 try:
                     port[i]["averageSellPrice"] = port[i]["totalUSDCSells"] / port[i]["totalCoinSells"]
@@ -245,7 +270,10 @@ def updatePortfolio():
                     port[i]["averageSellPrice"] = "N/A"
                 port[i]["value"] = port[i]["netCoins"] * port[i]["currentPrice"]
                 port[i]["unrlUSDCPNL"] = (port[i]["currentPrice"] - port[i]["averageBuyPrice"]) * port[i]["netCoins"]
-                port[i]["unrlPerPNL"] = port[i]["unrlUSDCPNL"] / (port[i]["averageBuyPrice"] * port[i]["netCoins"])
+                try:
+                    port[i]["unrlPerPNL"] = port[i]["unrlUSDCPNL"] / (port[i]["averageBuyPrice"] * port[i]["netCoins"])
+                except ZeroDivisionError:
+                    port[i]["unrlPerPNL"] = 0
                 try:
                     port[i]["realUSDCPNL"] = (port[i]["averageSellPrice"] - port[i]["averageBuyPrice"]) * port[i]["totalCoinSells"]
                 except TypeError:
@@ -254,6 +282,7 @@ def updatePortfolio():
                     port[i]["realPerPNL"] = (port[i]["averageSellPrice"] - port[i]["averageBuyPrice"]) / port[i]["averageBuyPrice"]
                 except TypeError:
                     port[i]["realPerPNL"] = 0
+
                 port[i]["netUSDCPNL"] = port[i]["unrlUSDCPNL"] + port[i]["realUSDCPNL"]  
                 port[i]["netPerPNL"] = port[i]["netUSDCPNL"] / port[i]["totalUSDCBuys"]
                 totalPortfolioValue += port[i]["value"]
@@ -267,15 +296,24 @@ def updatePortfolio():
             file2.truncate() # deletes any leftover data from file
     return port      
             
-def updatePrices():
-#    api_key = "9d6f2cf1-5daf-48ef-84a5-a22604c0eba6"
-    # check if the program is running as an exe
-    if getattr(sys, 'frozen', False):
-        scriptDir = os.path.dirname(sys.executable)
-    else:
-        scriptDir = os.path.dirname(os.path.abspath(__file__)) # gets the directory of this program
-    portFilePath = os.path.join(scriptDir, "portfolio.json") # finds path for the portfolio file
-    configFilePath = os.path.join(scriptDir, "config.json")
+def updatePrices(mainGUI):
+    def grabInput():
+        # make sure a positive number was entered
+        try:
+            customPrice = float(entry1.get())
+        except ValueError:
+            messagebox.showerror("Error", "Must enter a positive number")
+            return
+        if customPrice <= 0:
+            messagebox.showerror("Error", "Must enter a positive number")
+            return
+        
+        asset["currentPrice"] = customPrice
+        
+        addPriceGUI.destroy()
+
+    portFilePath = getFilePath("portfolio.json")
+    configFilePath = getFilePath("config.json")
 
     with open(configFilePath, "r+") as configFile:
         config = json.load(configFile)
@@ -285,7 +323,7 @@ def updatePrices():
     if not os.path.exists(portFilePath):
         messagebox.showerror("Error", "No 'portfolio.json' found")
         return
-
+    # checks if 'portfolio.json' has data
     with open(portFilePath, "r+") as file: # opens the file for reading/writing
         try:
             port = json.load(file) # reads the existing data on the file to a temporary dictionary
@@ -313,7 +351,22 @@ def updatePrices():
                 try:
                     asset["currentPrice"] = dat["data"][asset["ticker"]]["quote"]["USD"]["price"]
                 except KeyError:
-                    messagebox.showwarning("Warning", f"Error retrieving price data for {asset['ticker']}")
+                    if messagebox.askyesno("Warning", f"Error retrieving price data for {asset['ticker']}. Would you like to enter its price manually?"):
+                        addPriceGUI = tkinter.Toplevel(mainGUI)
+                        addPriceGUI.title("Transactions Log")
+
+                        text1 = Label(addPriceGUI, text=f"Enter price for {asset['ticker']}:")
+                        entry1 = tkinter.Entry(addPriceGUI)
+
+                        addPriceGUI.bind("<Return>", lambda event: grabInput())
+                        submitButton = tkinter.Button(addPriceGUI, text="Submit", command=lambda: grabInput())
+
+                        text1.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+                        entry1.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+                        submitButton.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+
+                        # Wait until window is destroyed to continue
+                        addPriceGUI.wait_window()
 
         file.seek(0) # goes to beginning of file
         json.dump(port, file, indent=4) # writes updated port list to file
@@ -321,14 +374,8 @@ def updatePrices():
         messagebox.showinfo("Done!", "Prices successfully updated")        
 
 def addTransaction(mainGUI):
-    # gets the directory of this program
-    if getattr(sys, 'frozen', False):
-        scriptDir = os.path.dirname(sys.executable)
-    else:
-        scriptDir = os.path.dirname(os.path.abspath(__file__))
-
     # checks if 'portfolio.json' exists
-    filePath2 = os.path.join(scriptDir, "portfolio.json")
+    filePath2 = getFilePath("portfolio.json")
     if not os.path.exists(filePath2):
         messagebox.showerror("Error", "No 'portfolio.json' found")
         return
@@ -361,7 +408,7 @@ def addTransaction(mainGUI):
     entry4.grid(row=3, column=1, padx=5, pady=5)
 
     def grabInput():
-        file_path = os.path.join(scriptDir, "transactions.json") # finds path for transaction file
+        file_path = getFilePath("transactions.json") # finds path for transaction file
         with open(file_path, "a+") as file: # opens the file in append and read mode, with closes the files when done. Creates the file if it doesn't exist
             try:
                 file.seek(0)
@@ -379,33 +426,77 @@ def addTransaction(mainGUI):
             
                 # gets input and stores in vars
                 transactionType = entry1.get().lower()
-                ticker = entry2.get().upper()
-                coinAmount = float(entry3.get())
-                usdcAmount = float(entry4.get())
 
-                # makes sure 'Buy' or 'Sell' was entered
+                ticker = entry2.get().upper()
+                
+                try:
+                    usdcAmount = float(entry4.get())
+                except ValueError:
+                    messagebox.showerror("Error", "Must enter a positive number in 'USDC'")
+                    return
+                if usdcAmount <= 0:
+                    messagebox.showerror("Error", "Must enter a positive number in 'USDC'")
+                    return
+
                 if transactionType not in ("buy", "sell"):
                     messagebox.showerror("Error", "Must be a 'Buy' or 'Sell' transaction.")
                     return
-            
-                # update USDC amount
-                if transactionType == "buy":
-                    transactionType = "bought"
-                    port[0]["netCoins"] -= usdcAmount
-                    port[0]["value"] -= usdcAmount
-                else:
-                    transactionType = "sold"
-                    port[0]["netCoins"] += usdcAmount
-                    port[0]["value"] += usdcAmount
+                
+                # change stablecoin balance
+                ops = {
+                    "+": operator.add,
+                    "-": operator.sub
+                }
+                if ticker == "USDC": # edge case
+                    if transactionType == "buy":
+                        choice = "increase"
+                        op = "+"
+                    else:
+                        choice = "decrease"
+                        op = "-"
+                    newBalance = ops[op](port[0]["netCoins"], usdcAmount)
+                    if messagebox.askyesno("Info", f"You inputted 'USDC' for the ticker. Would you like to {choice} your stablecoin balance by {usdcAmount}? (New USDC balance: {newBalance})"):
+                        if choice == "decrease" and port[0]["netCoins"] - usdcAmount < 0:
+                            messagebox.showerror("Error", "Can't have a negative USDC balance")
+                            return
+                        else:
+                            if transactionType == "buy":
+                                port[0]["netCoins"] += usdcAmount
+                                port[0]["value"] += usdcAmount
+                            else:
+                                port[0]["netCoins"] -= usdcAmount
+                                port[0]["value"] -= usdcAmount
+                    else:
+                        return
+                else: # normal transactions
+                    # coinAmount check
+                    try:
+                        coinAmount = float(entry3.get())
+                    except ValueError:
+                        messagebox.showerror("Error", "Must enter a positive number in '# of Coins'")
+                        return
+                    if coinAmount <= 0:
+                        messagebox.showerror("Error", "Must enter a positive number in '# of Coins'")
+                        return
+                    
+                    # update USDC amount
+                    if transactionType == "buy":
+                        transactionType = "bought"
+                        port[0]["netCoins"] -= usdcAmount
+                        port[0]["value"] -= usdcAmount
+                    else:
+                        transactionType = "sold"
+                        port[0]["netCoins"] += usdcAmount
+                        port[0]["value"] += usdcAmount
 
-                timeOfTransaction = datetime.now().isoformat() # gets current date and time from datetime module, converts to ISO format for json
-                newTransaction = {"transactionType": transactionType, "coinAmount": coinAmount,"usdcAmount": usdcAmount, "dateOfTransaction": timeOfTransaction}
-                if ticker not in transactions:
-                    transactions[ticker] = [] # if first transaction with ticker, initializes
-                transactions[ticker].append(newTransaction) # adds new transaction to the ticker
+                    timeOfTransaction = datetime.now().isoformat() # gets current date and time from datetime module, converts to ISO format for json
+                    newTransaction = {"transactionType": transactionType, "coinAmount": coinAmount,"usdcAmount": usdcAmount, "dateOfTransaction": timeOfTransaction}
+                    if ticker not in transactions:
+                        transactions[ticker] = [] # if first transaction with ticker, initializes
+                    transactions[ticker].append(newTransaction) # adds new transaction to the ticker
 
                 file2.seek(0)
-                json.dump(port, file2, indent=4)
+                json.dump(port, file2, indent=4) # write updated 'portfolio.json'
                 file2.truncate()
 
             file.seek(0) # goes to beginning of file
@@ -420,12 +511,7 @@ def addTransaction(mainGUI):
     submitButton.grid(row=4, column=1, padx=5, pady=5)
 
 def viewTransactions(mainGUI):
-    # check if the program is running as an exe
-    if getattr(sys, 'frozen', False):
-        scriptDir = os.path.dirname(sys.executable)
-    else:
-        scriptDir = os.path.dirname(os.path.abspath(__file__)) # gets the directory of this program
-    file_path = os.path.join(scriptDir, "transactions.json") # finds path for transaction file
+    file_path = getFilePath("transactions.json") # finds path for transaction file
 
     # checks if 'transactions.json' exists
     if not os.path.exists(file_path):
@@ -583,28 +669,37 @@ def newConfig(configFP):
         pass
 
     config = {
-    "api_key": "your_api_key_here"
+    "api_key": "your_api_key_here",
+    "portforlio_highlight_percent": 0.1,
+    "portfolio_highlight_color": "light blue"
     }
 
     # saves config to 'config.json'
     with open(configFP, "w") as file:
         file.seek(0) # goes to beginning of file
         json.dump(config, file, indent=4)
-        messagebox.showinfo("Update", "New 'config.json' file has been created, please update the API key for live price updates")
+        messagebox.showinfo("Update", "New 'config.json' file has been created, please update the API key for live price updates. Also feel free to view the other customizable options.")
 
-def main():
-    # make the main window in Tkinter and get width and height of the window
-    mainGUI = tkinter.Tk(screenName=None, baseName=None, className="Crypto Portfolio", useTk=1)
-    screenWidth = mainGUI.winfo_screenwidth()
-    screenHeight = mainGUI.winfo_screenheight()
+def windowSize(GUI, x, y):
+    screenWidth = GUI.winfo_screenwidth()
+    screenHeight = GUI.winfo_screenheight()
     # sets the window size to x% of the screen size
-    windowWidth = int((screenWidth * .2))
-    windowHeight = int((screenHeight * .35))
+    windowWidth = int((screenWidth * x))
+    windowHeight = int((screenHeight * y))
     # finds the middle position and rounds the number down
     xPos = (screenWidth - windowWidth) // 2
     yPos = (screenHeight - windowWidth) // 2
 
-    mainGUI.geometry(f"{windowWidth}x{windowHeight}+{xPos}+{yPos}")
+    GUI.geometry(f"{windowWidth}x{windowHeight}+{xPos}+{yPos}")
+
+    return windowWidth
+
+def main():
+    # make the main window in Tkinter and get width and height of the window
+    mainGUI = tkinter.Tk(screenName=None, baseName=None, className="Crypto Portfolio", useTk=1)
+
+    # set window size and save width
+    windowWidth = windowSize(mainGUI, .2, .35)
 
     # both height and width cannot be resized
     mainGUI.resizable(False, False)
@@ -615,7 +710,7 @@ def main():
     # Buttons
     viewPort = tkinter.Button(mainGUI, text="View Portfolio", font=("Helvetica", int(windowWidth * .06)), width=20, command=lambda: viewPortfolio(mainGUI))
     addTx = tkinter.Button(mainGUI, text="Add Transaction", font=("Helvetica", int(windowWidth * .06)), width=20, command=lambda: addTransaction(mainGUI))
-    updatePrice = tkinter.Button(mainGUI, text="Update Prices", font=("Helvetica", int(windowWidth * .06)), width=20, command=updatePrices)
+    updatePrice = tkinter.Button(mainGUI, text="Update Prices", font=("Helvetica", int(windowWidth * .06)), width=20, command=lambda: updatePrices(mainGUI))
     viewStuff = tkinter.Button(mainGUI, text="View Transactions", font=("Helvetica", int(windowWidth * .06)), width=20, command=lambda: viewTransactions(mainGUI))
     quit = tkinter.Button(mainGUI, text="Stop Program", font=("Helvetica", int(windowWidth * .06)), width=20, command=mainGUI.destroy)
 
@@ -626,21 +721,15 @@ def main():
     viewStuff.pack()
     quit.pack()
 
-    # check if the program is running as an exe
-    if getattr(sys, 'frozen', False):
-        scriptDir = os.path.dirname(sys.executable)
-    else:
-        scriptDir = os.path.dirname(os.path.abspath(__file__))
-
     # check if 'portfolio.json' exists
-    filePath = os.path.join(scriptDir, "portfolio.json")
-    if not os.path.isfile(filePath):
-        newPort(filePath)
+    portFilePath = getFilePath("portfolio.json")
+    if not os.path.isfile(portFilePath):
+        newPort(portFilePath)
 
     # check if 'config.json' exists
-    filePath2 = os.path.join(scriptDir, "config.json")
-    if not os.path.isfile(filePath2):
-        newConfig(filePath2)
+    configFilePath = getFilePath("config.json")
+    if not os.path.isfile(configFilePath):
+        newConfig(configFilePath)
 
     mainGUI.mainloop()
 

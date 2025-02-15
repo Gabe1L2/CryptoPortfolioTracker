@@ -16,7 +16,8 @@ This is my **first real program built independently**, so there may be issues I 
 ## 📂 How It Works  
 1. **First Run:**  
    - The script **creates a `config.json` file**, where you’ll need to input your **CoinMarketCap API key** (free to get).  
-   - You’ll also be prompted to **initialize `portfolio.json`** with your starting USDC or stablecoin balance.  
+   - You’ll also be prompted to **initialize `portfolio.json`** with your starting USDC or stablecoin balance.
+      - You can change this balance later by putting 'USDC' in the ticker entry when you try to add a transaction.
 2. **Adding Transactions:**  
    - When you log your **first trade**, a `transactions.json` file is **automatically created**.  
    - Every transaction **updates your USDC balance** accordingly.  

@@ -1,3 +1,6 @@
+2/26/25 v1.2
+- Price will now only update for active positions
+
 2/14/25 v1.1
   - added "portfolio_highlight_percent" and "portfolio_highlight_color" to "config.json" to make it easier to change for users
   - Cleaned up some redundant code

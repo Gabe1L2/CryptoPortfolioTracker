@@ -332,41 +332,43 @@ def updatePrices(mainGUI):
             return
         
         for asset in port: # loops through the dictionary
-            # Live price updating
-            parameters = {
-                "symbol": asset["ticker"],
-                "convert": "USD"  
-            }
-            headers = {
-                "X-CMC_PRO_API_KEY": api_key,
-                "Accept": "application/json"
+            # Only if still holding at least 1% of your buys
+            if abs(asset["totalCoinBuys"] - asset["totalCoinSells"]) > .01 * asset["totalCoinBuys"]:
+                # Live price updating
+                parameters = {
+                    "symbol": asset["ticker"],
+                    "convert": "USD"  
                 }
-            response = requests.get("https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest", headers=headers, params=parameters)        
-            dat = response.json()
-            # checks if no data was retrieved
-            if dat["status"]["error_code"] != 0:
-                messagebox.showerror("Error", f"{dat['status']['error_message']}")
-                return
-            else:
-                try:
-                    asset["currentPrice"] = dat["data"][asset["ticker"]]["quote"]["USD"]["price"]
-                except KeyError:
-                    if messagebox.askyesno("Warning", f"Error retrieving price data for {asset['ticker']}. Would you like to enter its price manually?"):
-                        addPriceGUI = tkinter.Toplevel(mainGUI)
-                        addPriceGUI.title("Transactions Log")
+                headers = {
+                    "X-CMC_PRO_API_KEY": api_key,
+                    "Accept": "application/json"
+                    }
+                response = requests.get("https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest", headers=headers, params=parameters)        
+                dat = response.json()
+                # checks if no data was retrieved
+                if dat["status"]["error_code"] != 0:
+                    messagebox.showerror("Error", f"{dat['status']['error_message']}")
+                    return
+                else:
+                    try:
+                        asset["currentPrice"] = dat["data"][asset["ticker"]]["quote"]["USD"]["price"]
+                    except KeyError:
+                        if messagebox.askyesno("Warning", f"Error retrieving price data for {asset['ticker']}. Would you like to enter its price manually?"):
+                            addPriceGUI = tkinter.Toplevel(mainGUI)
+                            addPriceGUI.title("Transactions Log")
 
-                        text1 = Label(addPriceGUI, text=f"Enter price for {asset['ticker']}:")
-                        entry1 = tkinter.Entry(addPriceGUI)
+                            text1 = Label(addPriceGUI, text=f"Enter price for {asset['ticker']}:")
+                            entry1 = tkinter.Entry(addPriceGUI)
 
-                        addPriceGUI.bind("<Return>", lambda event: grabInput())
-                        submitButton = tkinter.Button(addPriceGUI, text="Submit", command=lambda: grabInput())
+                            addPriceGUI.bind("<Return>", lambda event: grabInput())
+                            submitButton = tkinter.Button(addPriceGUI, text="Submit", command=lambda: grabInput())
 
-                        text1.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
-                        entry1.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
-                        submitButton.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+                            text1.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+                            entry1.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+                            submitButton.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
 
-                        # Wait until window is destroyed to continue
-                        addPriceGUI.wait_window()
+                            # Wait until window is destroyed to continue
+                            addPriceGUI.wait_window()
 
         file.seek(0) # goes to beginning of file
         json.dump(port, file, indent=4) # writes updated port list to file

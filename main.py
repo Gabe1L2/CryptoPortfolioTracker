@@ -333,7 +333,7 @@ def updatePrices(mainGUI):
         
         for asset in port: # loops through the dictionary
             # Only if still holding at least 1% of your buys
-            if abs(asset["totalCoinBuys"] - asset["totalCoinSells"]) > .01 * asset["totalCoinBuys"]:
+            if not asset["totalCoinSells"] or abs(asset["totalCoinBuys"] - asset["totalCoinSells"]) > .01 * asset["totalCoinBuys"]:
                 # Live price updating
                 parameters = {
                     "symbol": asset["ticker"],

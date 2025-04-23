@@ -1,3 +1,6 @@
+4/22/25 v1.3
+- Fixed bug where price wouldn't update first time for new assets in portfolio
+
 2/26/25 v1.2
 - Price will now only update for active positions
 
